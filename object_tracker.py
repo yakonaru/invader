@@ -24,6 +24,19 @@ from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
+
+#Face recognition
+import face_recognition
+import argparse
+import imutils
+import pickle
+
+#Import Detec Coconut
+from object_detection.utils import label_map_util
+from object_detection.utils import visualization_utils as vis_util
+
+flags.DEFINE_string('who', 'yada','who is in the image')
+flags.DEFINE_string('encodings', './encodings.pickle','Embedding for Face recognition')
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './checkpoints/yolov4-416',
                     'path to weights file')
@@ -38,8 +51,20 @@ flags.DEFINE_float('score', 0.50, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
+detection_method = 'cnn'
+
+def send_alert(time,message):
+    url = 'https://notify-api.line.me/api/notify'
+    token = '4AX9bOiqMD5cFRHmw2wDDnZwiFrTSuQ2LvyvUF0zTUP'
+    headers = {'content-type':'application/x-www-form-urlencoded','Authorization':'Bearer '+token}
+    msg = str(time)+': '+message
+    r = requests.post(url, headers=headers, data = {'message':msg})
+
+
+
 
 def main(_argv):
+
     # Definition of the parameters
     max_cosine_distance = 0.4
     nn_budget = None
@@ -56,10 +81,37 @@ def main(_argv):
     # load configuration for object detector
     config = ConfigProto()
     config.gpu_options.allow_growth = True
-    session = InteractiveSession(config=config)
+    session = InteractiveSession(config=pwconfig)
     STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
     input_size = FLAGS.size
     video_path = FLAGS.video
+
+    #loading encodings...
+    print("[INFO] loading encodings...")
+    data = pickle.loads(open(FLAGS.encodings, "rb").read())
+
+    if True:
+        # Defenetion path coconut model
+        # path to the frozen graph:
+        PATH_TO_FROZEN_GRAPH = 'model_data/frozen_inference_graph.pb'
+
+        # path to the label map
+        PATH_TO_LABEL_MAP = 'model_data/label_map.pbtxt'
+
+        # number of classes 
+        NUM_CLASSES = 1
+
+        #reads the frozen graph
+        detection_graph = tf.Graph()
+        with detection_graph.as_default():
+            od_graph_def = tf.compat.v1.GraphDef()
+            with tf.compat.v2.io.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
+                serialized_graph = fid.read()
+                od_graph_def.ParseFromString(serialized_graph)
+                tf.import_graph_def(od_graph_def, name='')
+        label_map = label_map_util.load_labelmap(PATH_TO_LABEL_MAP)
+        categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
+        category_index = label_map_util.create_category_index(categories)
 
     # load tflite model if flag is set
     if FLAGS.framework == 'tflite':
@@ -94,6 +146,11 @@ def main(_argv):
     frame_num = 0
     NextFrame = 0
     PreviousFrame = 0
+    PreviouseNames = str()
+    track_dict = dict()
+    unknown = 0
+    yada = 0
+    a_mom = 0
     # while video is running
     while True:
         return_value, frame = vid.read()
@@ -202,9 +259,11 @@ def main(_argv):
         # Call the tracker
         tracker.predict()
         tracker.update(detections)
-
+        
+        print(len(tracker.tracks))
         # update tracks
         for track in tracker.tracks:
+            print('Track is confirmed:',track.is_confirmed(),'since: ',track.time_since_update)
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue 
             bbox = track.to_tlbr()
@@ -215,30 +274,111 @@ def main(_argv):
             color = [i * 255 for i in color]
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*17, int(bbox[1])), color, -1)
-            cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+            if int(track.track_id) in track_dict.keys():
+                cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id],(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+            else:
+                cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+
             
+            if int(track.track_id) not in track_dict.keys() and class_name == 'person':
+            # if class_name == 'person' :
+                #Frame recognition
+                frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
+                #Face Recognition
+                rgb = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
+                rgb = imutils.resize(frame2, width=750)
+                r = frame2.shape[1] / float(rgb.shape[1])
+                # detect the (x, y)-coordinates of the bounding boxes
+                # coอrresponding to each face in the input frame, then compute
+                # the facial embeddings for each face
+                boxes = face_recognition.face_locations(rgb,model=detection_method)
+                encodings = face_recognition.face_encodings(rgb, boxes)
+                names2 = []
+
+                print('encondings length:',len(encodings))
+
+                for encoding in encodings:
+                    matches = face_recognition.compare_faces(data["encodings"],encoding,tolerance=0.5)
+                    print(face_recognition.face_distance(data["encodings"],encoding))
+                    name = "Unknown"
+                    if True in matches:
+                        matchedIdxs = [i for (i, b) in enumerate(matches) if b]
+                        counts = {}
+                        for i in matchedIdxs:
+                            name = data["names"][i]
+                            counts[name] = counts.get(name, 0) + 1
+                        name = max(counts, key=counts.get)
+                    names2.append(name)
+
+                for ((top, right, bottom, left), name) in zip(boxes, names2):
+                    top = int(top * r)
+                    right = int(right * r)
+                    bottom = int(bottom * r)
+                    left = int(left * r)
+                    cv2.rectangle(frame2, (left, top), (right, bottom),(0, 255, 0), 2)
+                    y = top - 15 if top - 15 > 15 else top + 15
+                    cv2.putText(frame2, name, (left, y), cv2.FONT_HERSHEY_SIMPLEX,0.75, (0, 255, 0), 2)
+                    print('Name:',names2)
+                    if str(names2) != '[]':
+                        track_dict[track.track_id] = names2[0]
+                        print('Found id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
+                        send_alert(time.time(),'Found Person id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
+                        if track_dict[track.track_id] == 'Yada2':
+                            yada = yada+1
+                        elif track_dict[track.track_id] == 'A':
+                            a_mom = a_mom +1
+                        elif track_dict[track.track_id] == 'Unknown':
+                            unknown = unknown +1
+                    print('accurancy yada/unknown/a:',yada,unknown,a_mom)
+            #Coconut
+            if True:
+                frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
+                # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                image_np_expanded = np.expand_dims(frame2, axis=0)
+                # Extract image tensor
+                image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+                # Extract detection boxes
+                boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+                # Extract detection scores
+                scores = detection_graph.get_tensor_by_name('detection_scores:0')
+                # Extract detection classes
+                classes = detection_graph.get_tensor_by_name('detection_classes:0')
+                # Extract number of detections
+                num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+                # Actual detection.
+                (boxes, scores, classes, num_detections) = tf.compat.v1.Session(graph=detection_graph).run(
+                    [boxes, scores, classes, num_detections],
+                    feed_dict={image_tensor: image_np_expanded})
+
 
         # if enable info flag then print details about each track
             if FLAGS.info:
-                print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
+                print("Tracker ID: {}, Class: {}, BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name,  (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
+            if class_name == 'person' and PreviousFrame==0 :
+                send_alert(time.time(),'Found Person id:'+str(track.track_id)+' Video: '+str(FLAGS.video))
+                PreviousFrame = 1
+            # elif class_name == 'person' and PreviousFrame == 1 and str(names2)!= PreviouseNames and str(names2)!= '[]' :
+            #     send_alert(time.time(),'Found'+str(names2))
+            #     PreviouseNames = str(names2)
+
+
+        if len(tracker.tracks) == 0 and PreviousFrame==1 :
+            if yada+unknown+a_mom == 0 :
+                accurancy_score = 0
+            elif FLAGS.who == 'yada' :
+                accurancy_score = yada/(yada+unknown+a_mom)
+            elif FLAGS.who == 'a':
+                accurancy_score = a_mom/(yada+unknown+a_mom)
+            elif FLAGS.who == 'unknown':
+                accurancy_score = unknown/(yada+unknown+a_mom)
+            send_alert(time.time(),'Person gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            PreviousFrame = 0
 
         # calculate frames per second of running detections
         fps = 1.0 / (time.time() - start_time)
         print("FPS: %.2f" % fps)
         result = np.asarray(frame)
         result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        print(class_name)
-
-        if class_name == 'person' and PreviousFrame==0 :
-          send_alert(time.time(),'Found person')
-          PreviousFrame = 1
-
-        elif class_name is None and PreviousFrame==1:
-          PreviousFrame=0
-          send_alert(time.time(),'Person was dispappear')
-          msg = 'Person has gone'
-          r = requests.post(url, headers=headers, data = {'message':msg})
-
 
         if not FLAGS.dont_show:
             cv2.imshow("Output Video", result)
@@ -254,10 +394,3 @@ if __name__ == '__main__':
         app.run(main)
     except SystemExit:
         pass
-
-def send_alert(time,message):
-    url = 'https://notify-api.line.me/api/notify'
-    token = '4AX9bOiqMD5cFRHmw2wDDnZwiFrTSuQ2LvyvUF0zTUP'
-    headers = {'content-type':'application/x-www-form-urlencoded','Authorization':'Bearer '+token}
-    msg = str(time)+': '+message
-    r = requests.post(url, headers=headers, data = {'message':msg})
