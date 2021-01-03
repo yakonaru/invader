@@ -2,6 +2,7 @@ import os
 # comment out below line to enable tensorflow logging outputs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import time
+import datetime
 import requests
 import tensorflow as tf
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -19,6 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
+
 # deep sort imports
 from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
@@ -34,10 +36,7 @@ import pickle
 #Import Detec Coconut
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
-import collections
-import six
-from six.moves import range
-from six.moves import zip
+
 
 flags.DEFINE_string('who', 'unknown','who is in the image')
 flags.DEFINE_string('encodings', './encodings.pickle','Embedding for Face recognition')
@@ -59,37 +58,12 @@ flags.DEFINE_boolean('thief_detector', False, 'enable to detect thief has taken 
 flags.DEFINE_boolean('face_rec', False, 'enable face recognition')
 detection_method = 'cnn'
 
-STANDARD_COLORS = [
-    'AliceBlue', 'Chartreuse', 'Aqua', 'Aquamarine', 'Azure', 'Beige', 'Bisque',
-    'BlanchedAlmond', 'BlueViolet', 'BurlyWood', 'CadetBlue', 'AntiqueWhite',
-    'Chocolate', 'Coral', 'CornflowerBlue', 'Cornsilk', 'Crimson', 'Cyan',
-    'DarkCyan', 'DarkGoldenRod', 'DarkGrey', 'DarkKhaki', 'DarkOrange',
-    'DarkOrchid', 'DarkSalmon', 'DarkSeaGreen', 'DarkTurquoise', 'DarkViolet',
-    'DeepPink', 'DeepSkyBlue', 'DodgerBlue', 'FireBrick', 'FloralWhite',
-    'ForestGreen', 'Fuchsia', 'Gainsboro', 'GhostWhite', 'Gold', 'GoldenRod',
-    'Salmon', 'Tan', 'HoneyDew', 'HotPink', 'IndianRed', 'Ivory', 'Khaki',
-    'Lavender', 'LavenderBlush', 'LawnGreen', 'LemonChiffon', 'LightBlue',
-    'LightCoral', 'LightCyan', 'LightGoldenRodYellow', 'LightGray', 'LightGrey',
-    'LightGreen', 'LightPink', 'LightSalmon', 'LightSeaGreen', 'LightSkyBlue',
-    'LightSlateGray', 'LightSlateGrey', 'LightSteelBlue', 'LightYellow', 'Lime',
-    'LimeGreen', 'Linen', 'Magenta', 'MediumAquaMarine', 'MediumOrchid',
-    'MediumPurple', 'MediumSeaGreen', 'MediumSlateBlue', 'MediumSpringGreen',
-    'MediumTurquoise', 'MediumVioletRed', 'MintCream', 'MistyRose', 'Moccasin',
-    'NavajoWhite', 'OldLace', 'Olive', 'OliveDrab', 'Orange', 'OrangeRed',
-    'Orchid', 'PaleGoldenRod', 'PaleGreen', 'PaleTurquoise', 'PaleVioletRed',
-    'PapayaWhip', 'PeachPuff', 'Peru', 'Pink', 'Plum', 'PowderBlue', 'Purple',
-    'Red', 'RosyBrown', 'RoyalBlue', 'SaddleBrown', 'Green', 'SandyBrown',
-    'SeaGreen', 'SeaShell', 'Sienna', 'Silver', 'SkyBlue', 'SlateBlue',
-    'SlateGray', 'SlateGrey', 'Snow', 'SpringGreen', 'SteelBlue', 'GreenYellow',
-    'Teal', 'Thistle', 'Tomato', 'Turquoise', 'Violet', 'Wheat', 'White',
-    'WhiteSmoke', 'Yellow', 'YellowGreen'
-]
-
-def send_alert(time,message):
+def send_alert(message):
     url = 'https://notify-api.line.me/api/notify'
     token = '4AX9bOiqMD5cFRHmw2wDDnZwiFrTSuQ2LvyvUF0zTUP'
     headers = {'content-type':'application/x-www-form-urlencoded','Authorization':'Bearer '+token}
-    msg = str(time)+': '+message
+    dt = time.strftime("%d-%m-%Y %H:%M:%S", time.gmtime(time.time()))
+    msg = str(dt)+': '+message
     r = requests.post(url, headers=headers, data = {'message':msg})
 
 
@@ -179,6 +153,7 @@ def main(_argv):
     PreviousFrame = 0
     PreviouseNames = str()
     track_dict = dict()
+    track_dict_thief = dict()
     unknown = 0
     yada = 0
     a_mom = 0
@@ -291,8 +266,6 @@ def main(_argv):
         # Call the tracker
         tracker.predict()
         tracker.update(detections)
-        
-        print(len(tracker.tracks))
         # update tracks
         for track in tracker.tracks:
             print('Track is confirmed:',track.is_confirmed(),'since: ',track.time_since_update)
@@ -353,8 +326,8 @@ def main(_argv):
                     print('Name:',names2)
                     if str(names2) != '[]':
                         track_dict[track.track_id] = names2[0]
-                        print('Found Person id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
-                        send_alert(time.time(),'Found Person id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
+                        print('Found Person '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
+                        send_alert('Found Person '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
                         if track_dict[track.track_id] == 'Yada2':
                             yada = yada+1
                         elif track_dict[track.track_id] == 'A':
@@ -364,7 +337,8 @@ def main(_argv):
                     print('accurancy yada/unknown/a:',yada,unknown,a_mom)
 
             # Coconut Thief detector
-            if FLAGS.thief_detector and frame2.shape[0] > 33 and frame2.shape[1] > 33 :
+            # if FLAGS.thief_detector  and track.track_id not in track_dict_thief.keys():
+            if FLAGS.thief_detector :
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                 image_np_expanded = np.expand_dims(frame2, axis=0)
@@ -389,7 +363,8 @@ def main(_argv):
                     line_thickness=3,
                     )
                 if len(box3_detect) > 1:
-                    send_alert(time.time(),'Found '+str(track_dict[track.track_id])+' took coconut at '+str(int((frame_num/25)/60))+' min '+str(frame_num/25)+' sec')
+                    send_alert('Found '+str(track_dict[track.track_id])+' took coconut at '+str(int((frame_num/25)/60))+' min '+str(frame_num/25)+' sec')
+                    track_dict_thief[track.track_id] = True
                 #Draw coconut box
                 for box3 in box3_detect: 
                     print('ymin3, xmin3, ymax3, xmax3,score : ',box3[0], box3[2], box3[1], box3[3],box3[4])
@@ -401,8 +376,8 @@ def main(_argv):
             if FLAGS.info:
                 print("Tracker ID: {}, Class: {}, BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name,  (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
             if class_name == 'person' and PreviousFrame==0 :
-                print('Found Person id:'+str(track.track_id)+' Video: '+str(FLAGS.video))
-                send_alert(time.time(),'Found Person id:'+str(track.track_id)+' Video: '+str(FLAGS.video))
+                print('Found Person '+str(track.track_id)+' Video: '+str(FLAGS.video))
+                send_alert('Found Person '+str(track.track_id)+' Video: '+str(FLAGS.video))
                 PreviousFrame = 1
 
         if len(tracker.tracks) == 0 and PreviousFrame==1 :
@@ -417,7 +392,7 @@ def main(_argv):
 
             track_dict.pop(track.track_id, None)
             print('Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
-            send_alert(time.time(),'Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            send_alert('Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
             PreviousFrame = 0
 
         # calculate frames per second of running detections
