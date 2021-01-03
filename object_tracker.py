@@ -35,7 +35,7 @@ import pickle
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
-flags.DEFINE_string('who', 'unknown,'who is in the image')
+flags.DEFINE_string('who', 'unknown','who is in the image')
 flags.DEFINE_string('encodings', './encodings.pickle','Embedding for Face recognition')
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './checkpoints/yolov4-416',
@@ -51,6 +51,8 @@ flags.DEFINE_float('score', 0.50, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
+flags.DEFINE_boolean('thief_detector', False, 'enable to detect thief get coconut ')
+flags.DEFINE_boolean('face_rec', False, 'enable face recognition')
 detection_method = 'cnn'
 
 def send_alert(time,message):
@@ -85,7 +87,7 @@ def main(_argv):
     # initialize tracker
     tracker = Tracker(metric)
 
-    # load configuration for object detector
+    # load configuration for Person detector
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     session = InteractiveSession(config=config)
@@ -93,37 +95,24 @@ def main(_argv):
     input_size = FLAGS.size
     video_path = FLAGS.video
 
-    #loading encodings...
+    
+    #loading encodings for Face recognition
     print("[INFO] loading encodings...")
     data = pickle.loads(open(FLAGS.encodings, "rb").read())
 
-    if False:
-    #Coconut
-        # Defenetion path coconut model
+    # Load model for Coconut Thief detector
+    if FLAGS.thief_detector:
         # path to the frozen graph:
         PATH_TO_FROZEN_GRAPH = 'model_data/frozen_inference_graph.pb'
-
-        # path to the label map
         PATH_TO_LABEL_MAP = 'model_data/label_map.pbtxt'
-
-        # number of classes 
         NUM_CLASSES = 1
-
-        #reads the frozen graph
-        # detection_graph = tf.Graph()
-        # with detection_graph.as_default():
-        #     od_graph_def = tf.compat.v1.GraphDef()
-        #     with tf.compat.v2.io.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
-        #         serialized_graph = fid.read()
-        #         od_graph_def.ParseFromString(serialized_graph)
-        #         tf.import_graph_def(od_graph_def, name='')
-
+        #Generate graph
         detection_graph = load_model_coconut(PATH_TO_FROZEN_GRAPH)
         label_map = label_map_util.load_labelmap(PATH_TO_LABEL_MAP)
         categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
         category_index = label_map_util.create_category_index(categories)
 
-    # load tflite model if flag is set
+    # load tflite model if flag is set for Person detector
     if FLAGS.framework == 'tflite':
         interpreter = tf.lite.Interpreter(model_path=FLAGS.weights)
         interpreter.allocate_tensors()
@@ -162,6 +151,7 @@ def main(_argv):
     yada = 0
     a_mom = 0
     # while video is running
+
     while True:
         return_value, frame = vid.read()
         if return_value:
@@ -289,8 +279,8 @@ def main(_argv):
             else:
                 cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
 
-
-            if int(track.track_id) not in track_dict.keys() and class_name == 'person':
+            #Face Recognition
+            if int(track.track_id) not in track_dict.keys() and class_name == 'person' and FLAGS.face_rec:
             # if class_name == 'person' :
                 #Frame recognition
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
@@ -331,7 +321,7 @@ def main(_argv):
                     print('Name:',names2)
                     if str(names2) != '[]':
                         track_dict[track.track_id] = names2[0]
-                        print('Found id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
+                        print('Found Person id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
                         send_alert(time.time(),'Found Person id '+str(track.track_id)+' is '+str(track_dict[track.track_id]))
                         if track_dict[track.track_id] == 'Yada2':
                             yada = yada+1
@@ -340,20 +330,16 @@ def main(_argv):
                         elif track_dict[track.track_id] == 'Unknown':
                             unknown = unknown +1
                     print('accurancy yada/unknown/a:',yada,unknown,a_mom)
-            #Coconut
-            if False:
+
+            # Coconut Thief detector
+            if FLAGS.thief_detector:
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                 image_np_expanded = np.expand_dims(frame2, axis=0)
-                # Extract image tensor
                 image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
-                # Extract detection boxes
                 boxes2 = detection_graph.get_tensor_by_name('detection_boxes:0')
-                # Extract detection scores
                 scores2 = detection_graph.get_tensor_by_name('detection_scores:0')
-                # Extract detection classes
                 classes2 = detection_graph.get_tensor_by_name('detection_classes:0')
-                # Extract number of detections
                 num_detections2 = detection_graph.get_tensor_by_name('num_detections:0')
                 # Actual detection.
                 boxes2, scores2, classes2, num_detections2 = tf.compat.v1.Session(graph=detection_graph).run(
@@ -367,6 +353,7 @@ def main(_argv):
             if FLAGS.info:
                 print("Tracker ID: {}, Class: {}, BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name,  (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
             if class_name == 'person' and PreviousFrame==0 :
+                print('Found Person id:'+str(track.track_id)+' Video: '+str(FLAGS.video))
                 send_alert(time.time(),'Found Person id:'+str(track.track_id)+' Video: '+str(FLAGS.video))
                 PreviousFrame = 1
             # elif class_name == 'person' and PreviousFrame == 1 and str(names2)!= PreviouseNames and str(names2)!= '[]' :
@@ -383,7 +370,10 @@ def main(_argv):
                 accurancy_score = a_mom/(yada+unknown+a_mom)
             elif FLAGS.who == 'unknown':
                 accurancy_score = unknown/(yada+unknown+a_mom)
-            send_alert(time.time(),'Person gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+
+            track_dict.pop(track.track_id, None)
+            print('Person '+str(track.track_id)+' gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            send_alert(time.time(),'Person '+str(track.track_id)+' gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
             PreviousFrame = 0
 
         # calculate frames per second of running detections
