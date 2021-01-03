@@ -34,6 +34,10 @@ import pickle
 #Import Detec Coconut
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
+import collections
+import six
+from six.moves import range
+from six.moves import zip
 
 flags.DEFINE_string('who', 'unknown','who is in the image')
 flags.DEFINE_string('encodings', './encodings.pickle','Embedding for Face recognition')
@@ -54,6 +58,32 @@ flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
 flags.DEFINE_boolean('thief_detector', False, 'enable to detect thief get coconut ')
 flags.DEFINE_boolean('face_rec', False, 'enable face recognition')
 detection_method = 'cnn'
+
+STANDARD_COLORS = [
+    'AliceBlue', 'Chartreuse', 'Aqua', 'Aquamarine', 'Azure', 'Beige', 'Bisque',
+    'BlanchedAlmond', 'BlueViolet', 'BurlyWood', 'CadetBlue', 'AntiqueWhite',
+    'Chocolate', 'Coral', 'CornflowerBlue', 'Cornsilk', 'Crimson', 'Cyan',
+    'DarkCyan', 'DarkGoldenRod', 'DarkGrey', 'DarkKhaki', 'DarkOrange',
+    'DarkOrchid', 'DarkSalmon', 'DarkSeaGreen', 'DarkTurquoise', 'DarkViolet',
+    'DeepPink', 'DeepSkyBlue', 'DodgerBlue', 'FireBrick', 'FloralWhite',
+    'ForestGreen', 'Fuchsia', 'Gainsboro', 'GhostWhite', 'Gold', 'GoldenRod',
+    'Salmon', 'Tan', 'HoneyDew', 'HotPink', 'IndianRed', 'Ivory', 'Khaki',
+    'Lavender', 'LavenderBlush', 'LawnGreen', 'LemonChiffon', 'LightBlue',
+    'LightCoral', 'LightCyan', 'LightGoldenRodYellow', 'LightGray', 'LightGrey',
+    'LightGreen', 'LightPink', 'LightSalmon', 'LightSeaGreen', 'LightSkyBlue',
+    'LightSlateGray', 'LightSlateGrey', 'LightSteelBlue', 'LightYellow', 'Lime',
+    'LimeGreen', 'Linen', 'Magenta', 'MediumAquaMarine', 'MediumOrchid',
+    'MediumPurple', 'MediumSeaGreen', 'MediumSlateBlue', 'MediumSpringGreen',
+    'MediumTurquoise', 'MediumVioletRed', 'MintCream', 'MistyRose', 'Moccasin',
+    'NavajoWhite', 'OldLace', 'Olive', 'OliveDrab', 'Orange', 'OrangeRed',
+    'Orchid', 'PaleGoldenRod', 'PaleGreen', 'PaleTurquoise', 'PaleVioletRed',
+    'PapayaWhip', 'PeachPuff', 'Peru', 'Pink', 'Plum', 'PowderBlue', 'Purple',
+    'Red', 'RosyBrown', 'RoyalBlue', 'SaddleBrown', 'Green', 'SandyBrown',
+    'SeaGreen', 'SeaShell', 'Sienna', 'Silver', 'SkyBlue', 'SlateBlue',
+    'SlateGray', 'SlateGrey', 'Snow', 'SpringGreen', 'SteelBlue', 'GreenYellow',
+    'Teal', 'Thistle', 'Tomato', 'Turquoise', 'Violet', 'Wheat', 'White',
+    'WhiteSmoke', 'Yellow', 'YellowGreen'
+]
 
 def send_alert(time,message):
     url = 'https://notify-api.line.me/api/notify'
@@ -114,7 +144,7 @@ def get_box_thief_detector(
       box = tuple(boxes[i].tolist())
       if scores is None:
         box_to_color_map[box] = groundtruth_box_visualization_color
-    else:
+      else:
         display_str = ''
         if not skip_labels:
           if not agnostic_mode:
@@ -182,7 +212,7 @@ def main(_argv):
     # Load model for Coconut Thief detector
     if FLAGS.thief_detector:
         # path to the frozen graph:
-        PATH_TO_FROZEN_GRAPH = 'model_data/frozen_inference_graph_rcnn.pb'
+        PATH_TO_FROZEN_GRAPH = 'model_data/frozen_inference_graph.pb'
         PATH_TO_LABEL_MAP = 'model_data/label_map.pbtxt'
         NUM_CLASSES = 1
         #Generate graph
@@ -412,8 +442,9 @@ def main(_argv):
                     print('accurancy yada/unknown/a:',yada,unknown,a_mom)
 
             # Coconut Thief detector
-            if FLAGS.thief_detector:
+            if FLAGS.thief_detector and frame2.shape[0] > 33 and frame2.shape[1] > 33 :
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
+                print('shape frame2:', str(frame2.shape[:2]))
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                 image_np_expanded = np.expand_dims(frame2, axis=0)
                 image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
@@ -427,7 +458,7 @@ def main(_argv):
                     feed_dict={image_tensor: image_np_expanded})
                 
                 
-                box3_detect = get_box_thief_detector(
+                box3_detect = vis_util.return_coordinates(
                     frame2,
                     np.squeeze(boxes2),
                     np.squeeze(classes2).astype(np.int32),
@@ -436,11 +467,10 @@ def main(_argv):
                     use_normalized_coordinates=True,
                     line_thickness=3,
                     )
-                for box3,color3 in box3_detect.items():
-                    ymin3, xmin3, ymax3, xmax3 = box3
-                    print('ymin3, xmin3, ymax3, xmax3',ymin3, xmin3, ymax3, xmax3)
-                # print("type: ",str(box3),'Num detect: '+str(num_detections2.shape))
-                # cv2.rectangle(frame2, (boxes[0], boxes[1]), (boxes[2], boxes[3]),(0, 255, 0), 2)
+                for box3 in box3_detect: 
+                    print('ymin3, xmin3, ymax3, xmax3,score : ',box3[0], box3[2], box3[1], box3[3],box3[4])
+                    # print("type: ",str(box3),'Num detect: '+str(num_detections2.shape))
+                    cv2.rectangle(frame2, (box3[1], box3[0]), (box3[3], box3[2]),(0, 255, 0), 2)
 
 
         # if enable info flag then print details about each track
@@ -466,8 +496,8 @@ def main(_argv):
                 accurancy_score = unknown/(yada+unknown+a_mom)
 
             track_dict.pop(track.track_id, None)
-            print('Person '+str(track.track_id)+' gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
-            send_alert(time.time(),'Person '+str(track.track_id)+' gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            print('Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            send_alert(time.time(),'Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
             PreviousFrame = 0
 
         # calculate frames per second of running detections
