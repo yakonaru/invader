@@ -1,8 +1,7 @@
 import os
 # comment out below line to enable tensorflow logging outputs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import time
-import datetime
+import time , pytz, datetime
 import requests
 import tensorflow as tf
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -62,8 +61,10 @@ def send_alert(message):
     url = 'https://notify-api.line.me/api/notify'
     token = '4AX9bOiqMD5cFRHmw2wDDnZwiFrTSuQ2LvyvUF0zTUP'
     headers = {'content-type':'application/x-www-form-urlencoded','Authorization':'Bearer '+token}
-    dt = time.strftime("%d-%m-%Y %H:%M:%S", time.gmtime(time.time()))
-    msg = str(dt)+': '+message
+    fmt = '%Y-%m-%d %H:%M:%S'
+    bkk = pytz.timezone('Asia/Bangkok')
+    dt = datetime.datetime.now(bkk)
+    msg = str(dt.strftime(fmt))+': '+message
     r = requests.post(url, headers=headers, data = {'message':msg})
 
 
@@ -153,7 +154,7 @@ def main(_argv):
     PreviousFrame = 0
     PreviouseNames = str()
     track_dict = dict()
-    track_dict_thief = dict()
+    track_thief_dict = dict()
     unknown = 0
     yada = 0
     a_mom = 0
@@ -278,11 +279,15 @@ def main(_argv):
             color = colors[int(track.track_id) % len(colors)]
             color = [i * 255 for i in color]
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*17, int(bbox[1])), color, -1)
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*30, int(bbox[1])), color, -1)
             if int(track.track_id) in track_dict.keys():
                 cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id],(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+                if int(track.track_id) in track_thief_dict.keys():
+                    cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id]+" is thief.",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
             else:
                 cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+                if int(track.track_id) in track_thief_dict.keys():
+                    cv2.putText(frame, class_name + "-" + str(track.track_id)+" is thief.",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
 
             #Face Recognition
             if int(track.track_id) not in track_dict.keys() and class_name == 'person' and FLAGS.face_rec:
@@ -337,8 +342,8 @@ def main(_argv):
                     print('accurancy yada/unknown/a:',yada,unknown,a_mom)
 
             # Coconut Thief detector
-            # if FLAGS.thief_detector  and track.track_id not in track_dict_thief.keys():
-            if FLAGS.thief_detector :
+            if FLAGS.thief_detector  and track.track_id not in track_thief_dict.keys():
+            # if FLAGS.thief_detector :
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                 image_np_expanded = np.expand_dims(frame2, axis=0)
@@ -364,13 +369,13 @@ def main(_argv):
                     )
                 if len(box3_detect) > 1:
                     send_alert('Found '+str(track_dict[track.track_id])+' took coconut at '+str(int((frame_num/25)/60))+' min '+str(frame_num/25)+' sec')
-                    track_dict_thief[track.track_id] = True
-                #Draw coconut box
-                for box3 in box3_detect: 
-                    print('ymin3, xmin3, ymax3, xmax3,score : ',box3[0], box3[2], box3[1], box3[3],box3[4])
-                    # coordinates_list.append([ymin, ymax, xmin, xmax, (box_to_score_map[box]*100)])
-                    # # print("type: ",str(box3),'Num detect: '+str(num_detections2.shape))
-                    cv2.rectangle(frame2, (box3[2], box3[0]), (box3[3], box3[1]),(0, 255, 0), 2)
+                    track_thief_dict[track.track_id] = True
+                    #Draw coconut box
+                    for box3 in box3_detect: 
+                        print('ymin3, xmin3, ymax3, xmax3,score : ',box3[0], box3[2], box3[1], box3[3],box3[4])
+                        # coordinates_list.append([ymin, ymax, xmin, xmax, (box_to_score_map[box]*100)])
+                        # # print("type: ",str(box3),'Num detect: '+str(num_detections2.shape))
+                        cv2.rectangle(frame2, (box3[2], box3[0]), (box3[3], box3[1]),(0, 255, 0), 2)
 
         # if enable info flag then print details about each track
             if FLAGS.info:
@@ -391,8 +396,8 @@ def main(_argv):
                 accurancy_score = unknown/(yada+unknown+a_mom)
 
             track_dict.pop(track.track_id, None)
-            print('Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
-            send_alert('Person '+str(track.track_id)+' has gone :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            print('Person '+str(track.track_id)+' disappeared :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            send_alert('Person '+str(track.track_id)+' disappeared :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
             PreviousFrame = 0
 
         # calculate frames per second of running detections
