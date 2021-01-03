@@ -279,15 +279,15 @@ def main(_argv):
             color = colors[int(track.track_id) % len(colors)]
             color = [i * 255 for i in color]
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*30, int(bbox[1])), color, -1)
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[2]), int(bbox[1])), color, -1)
             if int(track.track_id) in track_dict.keys():
                 cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id],(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
-                if int(track.track_id) in track_thief_dict.keys():
-                    cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id]+" is thief.",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+                if int(track.track_id) in track_thief_dict.keys() and track_dict[track.track_id] == 'Unknown':
+                    cv2.putText(frame, class_name + "-" + str(track.track_id)+"-"+track_dict[track.track_id]+"-Thief",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (0,0,0),2)
             else:
                 cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
                 if int(track.track_id) in track_thief_dict.keys():
-                    cv2.putText(frame, class_name + "-" + str(track.track_id)+" is thief.",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+                    cv2.putText(frame, class_name + "-" + str(track.track_id)+"-Thief",(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (0,0,0),2)
 
             #Face Recognition
             if int(track.track_id) not in track_dict.keys() and class_name == 'person' and FLAGS.face_rec:
