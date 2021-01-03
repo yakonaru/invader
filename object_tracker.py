@@ -61,7 +61,14 @@ def send_alert(time,message):
     r = requests.post(url, headers=headers, data = {'message':msg})
 
 
+def load_model_coconut(path):
+    with tf.compat.v2.io.gfile.GFile(path, "rb") as f:
+        graph_def = tf.compat.v1.GraphDef()
+        graph_def.ParseFromString(f.read())
 
+    with tf.Graph().as_default() as graph:
+        tf.import_graph_def(graph_def, name="")
+    return graph
 
 def main(_argv):
 
@@ -81,7 +88,7 @@ def main(_argv):
     # load configuration for object detector
     config = ConfigProto()
     config.gpu_options.allow_growth = True
-    session = InteractiveSession(config=pwconfig)
+    session = InteractiveSession(config=config)
     STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
     input_size = FLAGS.size
     video_path = FLAGS.video
@@ -90,7 +97,8 @@ def main(_argv):
     print("[INFO] loading encodings...")
     data = pickle.loads(open(FLAGS.encodings, "rb").read())
 
-    if True:
+    if False:
+    #Coconut
         # Defenetion path coconut model
         # path to the frozen graph:
         PATH_TO_FROZEN_GRAPH = 'model_data/frozen_inference_graph.pb'
@@ -102,13 +110,15 @@ def main(_argv):
         NUM_CLASSES = 1
 
         #reads the frozen graph
-        detection_graph = tf.Graph()
-        with detection_graph.as_default():
-            od_graph_def = tf.compat.v1.GraphDef()
-            with tf.compat.v2.io.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
-                serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
+        # detection_graph = tf.Graph()
+        # with detection_graph.as_default():
+        #     od_graph_def = tf.compat.v1.GraphDef()
+        #     with tf.compat.v2.io.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
+        #         serialized_graph = fid.read()
+        #         od_graph_def.ParseFromString(serialized_graph)
+        #         tf.import_graph_def(od_graph_def, name='')
+
+        detection_graph = load_model_coconut(PATH_TO_FROZEN_GRAPH)
         label_map = label_map_util.load_labelmap(PATH_TO_LABEL_MAP)
         categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
         category_index = label_map_util.create_category_index(categories)
@@ -331,24 +341,26 @@ def main(_argv):
                             unknown = unknown +1
                     print('accurancy yada/unknown/a:',yada,unknown,a_mom)
             #Coconut
-            if True:
+            if False:
                 frame2 = frame[int(bbox[1]):int(bbox[3]),int(bbox[0]):int(bbox[2])]
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                 image_np_expanded = np.expand_dims(frame2, axis=0)
                 # Extract image tensor
                 image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
                 # Extract detection boxes
-                boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+                boxes2 = detection_graph.get_tensor_by_name('detection_boxes:0')
                 # Extract detection scores
-                scores = detection_graph.get_tensor_by_name('detection_scores:0')
+                scores2 = detection_graph.get_tensor_by_name('detection_scores:0')
                 # Extract detection classes
-                classes = detection_graph.get_tensor_by_name('detection_classes:0')
+                classes2 = detection_graph.get_tensor_by_name('detection_classes:0')
                 # Extract number of detections
-                num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+                num_detections2 = detection_graph.get_tensor_by_name('num_detections:0')
                 # Actual detection.
-                (boxes, scores, classes, num_detections) = tf.compat.v1.Session(graph=detection_graph).run(
-                    [boxes, scores, classes, num_detections],
+                boxes2, scores2, classes2, num_detections2 = tf.compat.v1.Session(graph=detection_graph).run(
+                    [boxes2, scores2, classes2, num_detections2],
                     feed_dict={image_tensor: image_np_expanded})
+                print("type: ",type(boxes2),'shape:',boxes2.shape)
+                # cv2.rectangle(frame2, (boxes[0], boxes[1]), (boxes[2], boxes[3]),(0, 255, 0), 2)
 
 
         # if enable info flag then print details about each track
