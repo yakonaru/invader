@@ -289,7 +289,7 @@ def main(_argv):
             else:
                 cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
 
-            
+
             if int(track.track_id) not in track_dict.keys() and class_name == 'person':
             # if class_name == 'person' :
                 #Frame recognition
