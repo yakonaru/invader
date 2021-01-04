@@ -381,8 +381,8 @@ def main(_argv):
             if FLAGS.info:
                 print("Tracker ID: {}, Class: {}, BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name,  (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
             if class_name == 'person' and PreviousFrame==0 :
-                print('Found Person '+str(track.track_id)+' Video: '+str(FLAGS.video))
-                send_alert('Found Person '+str(track.track_id)+' Video: '+str(FLAGS.video))
+                print('Video: '+str(FLAGS.video)+'\nFound Person '+str(track.track_id))
+                send_alert('Video: '+str(FLAGS.video)+'\nFound Person '+str(track.track_id))
                 PreviousFrame = 1
 
         if len(tracker.tracks) == 0 and PreviousFrame==1 :
@@ -397,7 +397,8 @@ def main(_argv):
 
             track_dict.pop(track.track_id, None)
             print('Person '+str(track.track_id)+' disappeared :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
-            send_alert('Person '+str(track.track_id)+' disappeared :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            # send_alert('Person '+str(track.track_id)+' disappeared :'+FLAGS.who+': accurancy/yada/unknown/a: '+str(accurancy_score)+'/'+str(yada)+'/'+str(unknown)+'/'+str(a_mom)+' Video: '+str(FLAGS.video))
+            send_alert('Person '+str(track.track_id)+' disappeared.\nThis video is '+FLAGS.who+'\nFrom VDO: '+str(FLAGS.video))
             PreviousFrame = 0
 
         # calculate frames per second of running detections
